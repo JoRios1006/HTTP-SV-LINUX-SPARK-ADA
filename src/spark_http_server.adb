@@ -2,11 +2,21 @@
 -- AGPL-3.0
 with Interfaces.C;         use Interfaces.C;
 with System;
+with Ada.Strings;     
+with Ada.Strings.Fixed;
 
 procedure Spark_Http_Server is
    -- Constants
    Port    : constant := 8080;
    Backlog : constant := 128;
+   Payload  : constant String := "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Pong Game</title></head><body><h1>Pong!</h1></body></html>";
+   Response : constant String := "HTTP/1.1 200 OK" & ASCII.CR & ASCII.LF &
+                             "Content-Length: " & 
+                             Ada.Strings.Fixed.Trim (Integer'Image (Payload'Length), Ada.Strings.Left) & 
+                             ASCII.CR & ASCII.LF &
+                             ASCII.CR & ASCII.LF &
+                             Payload;
+   Bytes_Written : ptrdiff_t;
    --  Linux syscall bindings
    -- socket(2)
    function C_Socket
@@ -60,6 +70,12 @@ procedure Spark_Http_Server is
    -- close(2)
    function C_Close (Fd : int) return int
    with Import, Convention => C, External_Name => "close";
+   -- write(2)
+   function C_Write	
+   	 (Fd    : int; 
+   	  Buf   : System.Address;
+  	  Count : size_t) return ptrdiff_t
+   with Import, Convention => C, External_Name => "write";
    -- sockaddr_in (IPv4)
    type Sockaddr_In is record
       Sin_Family : Interfaces.C.unsigned_short;
@@ -84,6 +100,9 @@ procedure Spark_Http_Server is
       N_Read := C_Read (Client_FD, Buf'Address, Buf'Length);
       pragma Unreferenced (N_Read);
       -- TODO: parse + respond
+	  Bytes_Written := C_Write (Fd    => Client_Fd, 
+                             Buf   => Response'Address, 
+                             Count => Response'Length);
       Ignored := C_Close (Client_FD);
       pragma Unreferenced (Ignored);
    end Handle_Connection;

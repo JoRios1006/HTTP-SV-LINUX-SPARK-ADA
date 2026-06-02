@@ -1,21 +1,18 @@
-
 ## Current
 - [ ] Create `Send_Response` procedure
-- [ ] Send literal string `HTTP/1.1 200 OK\r\n\r\n`
-- [ ] Build project
-- [ ] Run server
-- [ ] Test with curl
-# Core HTTP
-## Socket Lifecycle
+## Core HTTP
 
+
+
+## Socket Lifecycle
 - [x] Create socket
 - [x] Set SO_REUSEADDR
 - [x] Bind socket
 - [x] Listen on socket
 - [x] Accept connection
 - [x] Read request bytes
-- [ ] Write response bytes
-- [ ] Close client socket after response
+- [x] Write response bytes
+- [x] Close client socket after response
 
 
 ## Minimal Response
@@ -23,8 +20,6 @@
 - [ ] Define response buffer
 - [ ] Add status line
 - [ ] Add CRLF terminator
-- [ ] Call write syscall
-- [ ] Verify curl no longer shows Empty Reply
 - [ ] Verify browser receives response
 
 
@@ -101,7 +96,10 @@
 - [ ] Test large file
 
 
-# Error Responses
+## Error Responses
+
+
+
 ## 400 Bad Request
 
 - [ ] Create response template
@@ -139,7 +137,10 @@
 - [ ] Test failure path
 
 
-# SPARK Verification
+## SPARK Verification
+
+
+
 ## Preconditions
 
 - [ ] Add contract for request parser
@@ -148,6 +149,7 @@
 
 
 ## Proofs
+
 - [ ] Run GNATprove
 - [ ] Fix overflow warnings
 - [ ] Fix range warnings
@@ -163,7 +165,10 @@
 - [ ] Verify string slicing
 
 
-# Testing
+## Testing
+
+
+
 ## Curl
 
 - [ ] GET /
@@ -187,7 +192,7 @@
 - [ ] Verify no fd leaks
 
 
-# Milestone v0.1
+## Milestone v0.1
 
 - [ ] Curl returns HTML
 - [ ] Browser loads page
@@ -197,3 +202,17 @@
 
 
 ## Done
+
+- [x] Build project
+- [x] Run server
+- [x] Test with curl
+- [x] Verify curl no longer shows Empty Reply
+- [x] Call write syscall
+- [x] Send literal string `HTTP/1.1 200 OK\r\n\r\n`
+- [x] Accept TCP connections
+- [x] Read HTTP request
+- [x] Send HTTP response
+- [x] Send Content-Length header
+- [x] Serve static HTML
+- [x] Curl receives response
+- [x] Browser receives response

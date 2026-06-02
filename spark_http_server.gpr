@@ -12,8 +12,14 @@ project Spark_Http_Server is
    end Compiler;
 
    package Binder is
-      for Switches ("Ada") use ("-Es"); --  Symbolic traceback
+      -- Appended "-static" to your existing traceback switch
+      for Switches ("Ada") use ("-Es", "-static");
    end Binder;
+
+   -- Added this package to force static linking of system/C libraries
+   package Linker is
+      for Switches ("Ada") use ("-static", "-static-libgcc");
+   end Linker;
 
    package Install is
       for Artifacts (".") use ("share");

@@ -1,0 +1,9 @@
+name = "spark_http_server"
+description = "Shiny new project"
+version = "0.1.0-dev"
+
+authors = ["Jose Rios"]
+maintainers = ["Jose Rios <agustinrios1006@gmail.com>"]
+maintainers-logins = ["JoRios1006"]
+
+executables = ["spark_http_server"]

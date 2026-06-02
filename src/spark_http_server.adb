@@ -1,150 +1,56 @@
 -- spark_http_server.adb
 -- AGPL-3.0
-with Interfaces.C;         use Interfaces.C;
+--
+-- Entry point.  Brings up a TCP socket on Port and loops forever, handing
+-- each accepted connection to Http_Handler.Handle_Connection.
+--
+-- Startup sequence (mirrors the standard POSIX server recipe):
+--
+--   socket  →  setsockopt(SO_REUSEADDR)  →  bind  →  listen  →  accept loop
+
+with Interfaces.C;    use Interfaces.C;
 with System;
-with Ada.Strings;     
-with Ada.Strings.Fixed;
+with Http_Bindings;   use Http_Bindings;
+with Http_Handler;    use Http_Handler;
+with Posix_Constants; use Posix_Constants;
 
 procedure Spark_Http_Server is
-   -- Constants
+
    Port    : constant := 8080;
-   Backlog : constant := 128;
-   Payload  : constant String := "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Pong Game</title></head><body><h1>Pong!</h1></body></html>";
-   Response : constant String := "HTTP/1.1 200 OK" & ASCII.CR & ASCII.LF &
-                             "Content-Length: " & 
-                             Ada.Strings.Fixed.Trim (Integer'Image (Payload'Length), Ada.Strings.Left) & 
-                             ASCII.CR & ASCII.LF &
-                             ASCII.CR & ASCII.LF &
-                             Payload;
-   Bytes_Written : ptrdiff_t;
-   --  Linux syscall bindings
-   -- socket(2)
-   function C_Socket
-     (Domain   : int;
-      Typ      : int;
-      Protocol : int) return int
-   with Import, Convention => C, External_Name => "socket";
-   -- setsockopt(2)
-   function C_Setsockopt
-     (Sockfd  : int;
-      Level   : int;
-      Optname : int;
-      Optval  : System.Address;
-      Optlen  : int) return int
-   with Import, Convention => C, External_Name => "setsockopt";
-   -- bind(2)
-   function C_Bind
-     (Sockfd  : int;
-      Addr    : System.Address;
-      Addrlen : int) return int
-   with Import, Convention => C, External_Name => "bind";
-   -- listen(2)
-   function C_Listen
-     (Sockfd  : int;
-      Backlog : int) return int
-   with Import, Convention => C, External_Name => "listen";
-   -- accept(2)
-   function C_Accept
-     (Sockfd  : int;
-      Addr    : System.Address;
-      Addrlen : System.Address) return int
-   with Import, Convention => C, External_Name => "accept";
-   -- read(2)
-   function C_Read
-     (Fd    : int;
-      Buf   : System.Address;
-      Count : size_t) return size_t
-   with Import, Convention => C, External_Name => "read";
-   -- open(2)
-   function C_Open
-     (Pathname : char_array;
-      Flags    : int) return int
-   with Import, Convention => C, External_Name => "open";
-   -- sendfile(2)
-   function C_Sendfile
-     (Out_FD : int;
-      In_FD  : int;
-      Offset : System.Address;
-      Count  : size_t) return size_t
-   with Import, Convention => C, External_Name => "sendfile";
-   -- close(2)
-   function C_Close (Fd : int) return int
-   with Import, Convention => C, External_Name => "close";
-   -- write(2)
-   function C_Write	
-   	 (Fd    : int; 
-   	  Buf   : System.Address;
-  	  Count : size_t) return ptrdiff_t
-   with Import, Convention => C, External_Name => "write";
-   -- sockaddr_in (IPv4)
-   type Sockaddr_In is record
-      Sin_Family : Interfaces.C.unsigned_short;
-      Sin_Port   : Interfaces.C.unsigned_short;
-      Sin_Addr   : Interfaces.C.unsigned;       -- in_addr (s_addr)
-      Sin_Zero   : Interfaces.C.char_array (0 .. 7);
-   end record
-   with Convention => C;
-   -- Helpers
-   procedure Handle_Connection (Client_FD : int) is
-      -- TODO:
-      --   1. read(Client_FD, ...) → raw HTTP request bytes
-      --   2. parse request line → method + path
-      --   3. open(path) → file_fd
-      --   4. sendfile(Client_FD, file_fd, ...) → send bytes
-      --   5. close(file_fd)
-      --   6. close(Client_FD)
-      Buf     : char_array (0 .. 4095);
-      N_Read  : size_t;
-      Ignored : int;
-   begin
-      N_Read := C_Read (Client_FD, Buf'Address, Buf'Length);
-      pragma Unreferenced (N_Read);
-      -- TODO: parse + respond
-	  Bytes_Written := C_Write (Fd    => Client_Fd, 
-                             Buf   => Response'Address, 
-                             Count => Response'Length);
-      Ignored := C_Close (Client_FD);
-      pragma Unreferenced (Ignored);
-   end Handle_Connection;
-   -- Main
-   -- Constants (POSIX / Linux x86-64)
-   AF_INET     : constant int := 2;
-   SOCK_STREAM : constant int := 1;
-   SOL_SOCKET  : constant int := 1;
-   SO_REUSEADDR: constant int := 2;
-   O_RDONLY    : constant int := 0;
-   INADDR_ANY  : constant Interfaces.C.unsigned := 0;
-   -- htons — needed for port + sin_family byte order
-   function Htons (Host : Interfaces.C.unsigned_short)
-     return Interfaces.C.unsigned_short
-   with Import, Convention => C, External_Name => "htons";
-   Server_FD  : int;
-   Client_FD  : int;
-   Opt        : aliased int := 1;
-   Addr       : aliased Sockaddr_In;
-   Addr_Len   : aliased int := Sockaddr_In'Size / 8;
-   Ret        : int;
-   
+   Backlog : constant := 128;  -- max pending connections before accept drains them
+
+   Server_FD : int;
+   Client_FD : int;
+   Opt       : aliased int := 1;
+   Addr      : aliased Sockaddr_In;
+   Addr_Len  : aliased int := Sockaddr_In'Size / 8;
+   Ret       : int;
+
 begin
-   -- 1. socket
+   --  1. Create a TCP socket.
    Server_FD := C_Socket (AF_INET, SOCK_STREAM, 0);
    pragma Assert (Server_FD >= 0);
-   -- 2. setsockopt SO_REUSEADDR
+
+   --  2. Allow immediate reuse of the port after a restart (avoids
+   --     "Address already in use" during development).
    Ret := C_Setsockopt (Server_FD, SOL_SOCKET, SO_REUSEADDR,
                         Opt'Address, int (Opt'Size / 8));
    pragma Assert (Ret = 0);
-   -- 3. bind
-   Addr := (Sin_Family => Interfaces.C.unsigned_short (AF_INET),  -- host byte order
+
+   --  3. Bind to 0.0.0.0:Port (all interfaces).
+   Addr := (Sin_Family => Interfaces.C.unsigned_short (AF_INET),
             Sin_Port   => Htons (Interfaces.C.unsigned_short (Port)),
             Sin_Addr   => INADDR_ANY,
             Sin_Zero   => (others => Interfaces.C.char'Val (0)));
 
    Ret := C_Bind (Server_FD, Addr'Address, Addr_Len);
    pragma Assert (Ret = 0);
-   -- 4. listen
+
+   --  4. Start listening.
    Ret := C_Listen (Server_FD, Backlog);
    pragma Assert (Ret = 0);
-   -- 5. accept loop
+
+   --  5. Accept loop — runs forever (single-threaded, one client at a time).
    loop
       Client_FD := C_Accept (Server_FD,
                               System.Null_Address,
@@ -153,4 +59,5 @@ begin
          Handle_Connection (Client_FD);
       end if;
    end loop;
+
 end Spark_Http_Server;
